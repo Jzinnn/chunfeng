@@ -12,6 +12,17 @@ void *g_aboot_cb_ctx;
 static int s_device_log_quiet;
 static unsigned s_device_log_dropped;
 static rt_tick_t s_log_t0;
+static int s_verbose;
+
+void aboot_set_verbose(int on)
+{
+	s_verbose = on ? 1 : 0;
+}
+
+int aboot_get_verbose(void)
+{
+	return s_verbose;
+}
 
 void aboot_log_printf(const char *fmt, ...)
 {

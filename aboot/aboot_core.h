@@ -44,6 +44,10 @@ const aboot_io_t *aboot_port_usbh_serial(void);
 /* Relative elapsed log: [aboot +1.234s] ... (from aboot_core_init) */
 void aboot_log_printf(const char *fmt, ...);
 
+/* 1 = print modem INFO/STDIO during download (may slow / risk USB RX drop) */
+void aboot_set_verbose(int on);
+int aboot_get_verbose(void);
+
 int aboot_core_init(const aboot_io_t *io, aboot_callback_t cb, void *cb_ctx);
 void aboot_core_deinit(void);
 

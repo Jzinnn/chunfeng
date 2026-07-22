@@ -30,17 +30,17 @@ static void aboot_msh_cb(const aboot_message_t *msg, void *ctx)
 static void usage(void)
 {
 	printf("Usage:\n");
-	printf("  aboot <image> [dev]              connect + download ASR aboot image\n");
+	printf("  aboot <image> [dev] [-v]         connect + download ASR aboot image\n");
 	printf("  aboot connect [dev]              open + SMUX handshake only\n");
 	printf("  aboot at <dev> <cmd> [timeout_ms]  send raw AT (no SMUX)\n");
 	printf("  aboot help\n");
 	printf("dev: /dev/ttyACM0 | auto (default, probes ttyACM0..3)\n");
+	printf("-v: print modem INFO (Psram/Preboot); default muted for speed\n");
 	printf("Example:\n");
 	printf("  aboot /mnt/D/fw.bin auto\n");
+	printf("  aboot /mnt/E/firmware.bin auto -v\n");
 	printf("  aboot connect /dev/ttyACM0\n");
 	printf("  aboot at /dev/ttyACM0 AT\n");
-	printf("  aboot at /dev/ttyACM0 \"AT\\r\\n\"\n");
-	printf("  aboot at auto AT+CGMI 5000\n");
 }
 
 static int cmd_aboot(int argc, char **argv)
@@ -48,11 +48,20 @@ static int cmd_aboot(int argc, char **argv)
 	const char *dev = "auto";
 	const char *img = NULL;
 	int ret;
+	int i;
+	int verbose = 0;
 
 	if (argc < 2 || !strcmp(argv[1], "help") || !strcmp(argv[1], "-h")) {
 		usage();
 		return 0;
 	}
+
+	for (i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--verbose")) {
+			verbose = 1;
+		}
+	}
+	aboot_set_verbose(verbose);
 
 	if (aboot_core_init(aboot_port_usbh_serial(), aboot_msh_cb, NULL) < 0) {
 		printf("aboot_core_init fail\n");
@@ -60,7 +69,7 @@ static int cmd_aboot(int argc, char **argv)
 	}
 
 	if (!strcmp(argv[1], "connect")) {
-		if (argc >= 3) {
+		if (argc >= 3 && argv[2][0] != '-') {
 			dev = argv[2];
 		}
 		ret = aboot_core_connect(dev);
@@ -80,7 +89,7 @@ static int cmd_aboot(int argc, char **argv)
 		}
 		dev = argv[2];
 		at_cmd = argv[3];
-		if (argc >= 5) {
+		if (argc >= 5 && argv[4][0] != '-') {
 			timeout_ms = atoi(argv[4]);
 		}
 		ret = aboot_core_at(dev, at_cmd, timeout_ms);
@@ -88,9 +97,9 @@ static int cmd_aboot(int argc, char **argv)
 		return ret;
 	}
 
-	/* aboot <image> [dev] */
+	/* aboot <image> [dev] [-v] */
 	img = argv[1];
-	if (argc >= 3) {
+	if (argc >= 3 && argv[2][0] != '-') {
 		dev = argv[2];
 	}
 

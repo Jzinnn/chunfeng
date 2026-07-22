@@ -275,9 +275,14 @@ int aboot_download_file(const char *img_path, int reboot)
 		 img_path, (unsigned)s_firmware_size, reboot);
 	aboot_notify_log(msg);
 	aboot_notify_progress(0);
-	/* msh printf of modem INFO is far slower than Linux PC → mute during download */
-	aboot_set_device_log_quiet(1);
-	aboot_notify_log("download: device INFO muted (PROG/OKAY still shown)");
+	if (!aboot_get_verbose()) {
+		/* msh printf of modem INFO is far slower than Linux PC → mute */
+		aboot_set_device_log_quiet(1);
+		aboot_notify_log("download: device INFO muted (use -v to show Psram/Preboot)");
+	} else {
+		aboot_set_device_log_quiet(0);
+		aboot_notify_log("download: verbose ON (device INFO printed)");
+	}
 
 	if (download_read_line(cmd_line) <= 0) {
 		goto fail;
