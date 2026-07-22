@@ -356,10 +356,16 @@ int aboot_download_file(const char *img_path, int reboot)
 		}
 
 		if (rc > 0) {
+			int wait_ms = 30000;
+
 			if (!strcmp(cmd_line, cmd_call) && s_is_crane_bootrom) {
 				strcpy(cmd_line, cmd_nop);
 			}
-			if (download_send_and_wait(cmd_line, expect, dev_resp, 30000) < 0) {
+			/* call runs device preboot (PSRAM/PMIC/...); often >30s of INFO flood */
+			if (!strcmp(cmd_line, cmd_call)) {
+				wait_ms = 300000;
+			}
+			if (download_send_and_wait(cmd_line, expect, dev_resp, wait_ms) < 0) {
 				goto fail;
 			}
 		} else if (rc < 0) {
