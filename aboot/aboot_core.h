@@ -50,6 +50,9 @@ int aboot_core_connect(const char *dev_path);
 /* download ASR-style script image; reboot!=0 => reboot after done */
 int aboot_core_download_file(const char *img_path, int reboot);
 
+/* raw AT over serial (no SMUX): open, send cmd, print reply until OK/ERROR/timeout */
+int aboot_core_at(const char *dev_path, const char *cmd, int timeout_ms);
+
 int aboot_core_disconnect(void);
 
 #ifdef __cplusplus

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <hal_cmd.h>
 
 #include "aboot_core.h"
@@ -29,13 +30,17 @@ static void aboot_msh_cb(const aboot_message_t *msg, void *ctx)
 static void usage(void)
 {
 	printf("Usage:\n");
-	printf("  aboot <image> [dev]     connect + download ASR aboot image\n");
-	printf("  aboot connect [dev]     open + SMUX handshake only\n");
+	printf("  aboot <image> [dev]              connect + download ASR aboot image\n");
+	printf("  aboot connect [dev]              open + SMUX handshake only\n");
+	printf("  aboot at <dev> <cmd> [timeout_ms]  send raw AT (no SMUX)\n");
 	printf("  aboot help\n");
 	printf("dev: /dev/ttyACM0 | auto (default, probes ttyACM0..3)\n");
 	printf("Example:\n");
 	printf("  aboot /mnt/D/fw.bin auto\n");
 	printf("  aboot connect /dev/ttyACM0\n");
+	printf("  aboot at /dev/ttyACM0 AT\n");
+	printf("  aboot at /dev/ttyACM0 \"AT\\r\\n\"\n");
+	printf("  aboot at auto AT+CGMI 5000\n");
 }
 
 static int cmd_aboot(int argc, char **argv)
@@ -60,6 +65,25 @@ static int cmd_aboot(int argc, char **argv)
 		}
 		ret = aboot_core_connect(dev);
 		aboot_core_disconnect();
+		aboot_core_deinit();
+		return ret;
+	}
+
+	if (!strcmp(argv[1], "at")) {
+		const char *at_cmd;
+		int timeout_ms = 3000;
+
+		if (argc < 4) {
+			printf("usage: aboot at <dev> <cmd> [timeout_ms]\n");
+			aboot_core_deinit();
+			return -1;
+		}
+		dev = argv[2];
+		at_cmd = argv[3];
+		if (argc >= 5) {
+			timeout_ms = atoi(argv[4]);
+		}
+		ret = aboot_core_at(dev, at_cmd, timeout_ms);
 		aboot_core_deinit();
 		return ret;
 	}
