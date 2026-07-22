@@ -12,7 +12,7 @@ extern void *g_aboot_cb_ctx;
 
 void aboot_notify_log(const char *msg);
 void aboot_notify_status(const char *status, int error);
-void aboot_notify_progress(int percent);
+void aboot_notify_progress(aboot_progress_src_t src, int percent);
 
 /* Mute modem INFO/STDIO printf during download (msh printf is too slow → USB RX drop). */
 void aboot_device_log_drop(void); /* internal count bump */

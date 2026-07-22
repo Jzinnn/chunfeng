@@ -142,17 +142,27 @@ void aboot_notify_status(const char *status, int error)
 	g_aboot_cb(&m, g_aboot_cb_ctx);
 }
 
-void aboot_notify_progress(int percent)
+void aboot_notify_progress(aboot_progress_src_t src, int percent)
 {
 	aboot_message_t m;
 
+	if (percent < 0) {
+		percent = 0;
+	}
+	if (percent > 100) {
+		percent = 100;
+	}
+
 	if (!g_aboot_cb) {
-		aboot_log_printf("progress=%d\n", percent);
+		aboot_log_printf("%s progress %d%%\n",
+				 src == ABOOT_PROG_DEVICE ? "device" : "script",
+				 percent);
 		return;
 	}
 	memset(&m, 0, sizeof(m));
 	m.event = ABOOT_EVT_PROGRESS;
-	m.u.progress = percent;
+	m.u.progress.percent = percent;
+	m.u.progress.src = src;
 	g_aboot_cb(&m, g_aboot_cb_ctx);
 }
 

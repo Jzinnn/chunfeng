@@ -219,6 +219,8 @@ static int download_wait_device(char *dev_resp, int timeout_ms)
 	return aboot_transport_wait_response(dev_resp, ABOOT_RESPONSE_SZ, timeout_ms);
 }
 
+static int s_last_script_pct = -1;
+
 static void download_notify_progress(void)
 {
 	long pos;
@@ -235,7 +237,12 @@ static void download_notify_progress(void)
 	if (pct > 100) {
 		pct = 100;
 	}
-	aboot_notify_progress(pct);
+	/* only emit when percent changes — avoid spam with device PROG */
+	if (pct == s_last_script_pct) {
+		return;
+	}
+	s_last_script_pct = pct;
+	aboot_notify_progress(ABOOT_PROG_SCRIPT, pct);
 }
 
 static int download_send_and_wait(char *cmd_line, char *expect_template,
@@ -301,7 +308,8 @@ int aboot_download_file(const char *img_path, int reboot)
 	snprintf(msg, sizeof(msg), "download: file=%s size=%u reboot=%d",
 		 img_path, (unsigned)s_firmware_size, reboot);
 	aboot_notify_log(msg);
-	aboot_notify_progress(0);
+	s_last_script_pct = -1;
+	aboot_notify_progress(ABOOT_PROG_SCRIPT, 0);
 	if (!aboot_get_verbose()) {
 		/* msh printf of modem INFO is far slower than Linux PC → mute */
 		aboot_set_device_log_quiet(1);
@@ -389,7 +397,7 @@ int aboot_download_file(const char *img_path, int reboot)
 		} else {
 			if (!s_reboot_after) {
 				aboot_set_device_log_quiet(0);
-				aboot_notify_progress(100);
+				aboot_notify_progress(ABOOT_PROG_SCRIPT, 100);
 				aboot_notify_status("SUCCEEDED", 0);
 				fclose(s_file);
 				s_file = NULL;
@@ -429,7 +437,7 @@ int aboot_download_file(const char *img_path, int reboot)
 					aboot_transport_send_cmd((const uint8_t *)cmd_line,
 								 strlen(cmd_line));
 					dl_delay_ms(100);
-					aboot_notify_progress(100);
+					aboot_notify_progress(ABOOT_PROG_SCRIPT, 100);
 					aboot_notify_status("SUCCEEDED", 0);
 					aboot_set_device_log_quiet(0);
 					fclose(s_file);

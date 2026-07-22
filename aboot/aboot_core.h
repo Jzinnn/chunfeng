@@ -26,12 +26,21 @@ typedef enum {
 	ABOOT_EVT_STATUS,
 } aboot_event_t;
 
+/* ABOOT_EVT_PROGRESS source */
+typedef enum {
+	ABOOT_PROG_SCRIPT = 0, /* host: firmware.bin file offset */
+	ABOOT_PROG_DEVICE,     /* modem PROG frame while flashing */
+} aboot_progress_src_t;
+
 typedef struct {
 	aboot_event_t event;
 	int error;
 	union {
 		const char *message;
-		int progress; /* 0..100 */
+		struct {
+			int percent; /* 0..100 */
+			aboot_progress_src_t src;
+		} progress;
 		const char *status;
 	} u;
 } aboot_message_t;

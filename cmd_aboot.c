@@ -16,7 +16,10 @@ static void aboot_msh_cb(const aboot_message_t *msg, void *ctx)
 		aboot_log_printf("%s\n", msg->u.message ? msg->u.message : "");
 		break;
 	case ABOOT_EVT_PROGRESS:
-		aboot_log_printf("progress %d%%\n", msg->u.progress);
+		aboot_log_printf("%s progress %d%%\n",
+				 msg->u.progress.src == ABOOT_PROG_DEVICE ?
+					 "device" : "script",
+				 msg->u.progress.percent);
 		break;
 	case ABOOT_EVT_STATUS:
 		aboot_log_printf("status=%s err=%d\n",

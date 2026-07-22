@@ -147,7 +147,7 @@ static void aboot_transport_rx_callback(const uint8_t *status, size_t size)
 	} else if (!memcmp(status, "PROG", 4)) {
 		memcpy(response, status + 4, size - 4);
 		response[size - 4] = '\0';
-		aboot_notify_progress(atoi(response));
+		aboot_notify_progress(ABOOT_PROG_DEVICE, atoi(response));
 	} else if (!memcmp(status, "DATA", 4) || !memcmp(status, "OKAY", 4) ||
 		   !memcmp(status, "FAIL", 4)) {
 		memcpy(response, status, size);
