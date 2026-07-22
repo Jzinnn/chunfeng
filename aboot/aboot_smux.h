@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 #ifndef ABOOT_SMUX_TXBUF_SIZE
-#define ABOOT_SMUX_TXBUF_SIZE (8 * 1024)
+#define ABOOT_SMUX_TXBUF_SIZE (2 * 1024)
 #endif
 
 #ifndef ABOOT_SMUX_FRAME_MTU
@@ -36,8 +36,9 @@ void aboot_smux_register_cmd_callback(aboot_smux_rx_cb_t cb);
 void aboot_smux_register_data_callback(aboot_smux_rx_cb_t cb);
 
 void aboot_smux_set_aboot_data_size(size_t size);
-void aboot_smux_write_aboot_cmd(const uint8_t *data, size_t len);
-void aboot_smux_write_aboot_data(const uint8_t *data, size_t len);
+/* return 0 ok, <0 on TX error */
+int aboot_smux_write_aboot_cmd(const uint8_t *data, size_t len);
+int aboot_smux_write_aboot_data(const uint8_t *data, size_t len);
 
 #ifdef __cplusplus
 }

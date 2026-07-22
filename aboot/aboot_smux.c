@@ -58,6 +58,8 @@ typedef struct {
 } smux_t;
 
 static smux_t *s_smux;
+static uint8_t s_txbuf_mem[ABOOT_SMUX_TXBUF_SIZE];
+static int s_tx_error;
 
 static void smux_process_incoming_data(const uint8_t *data, size_t len);
 
@@ -121,12 +123,13 @@ static void send_txbuf(void)
 		wr = g_aboot_io->write(s_smux->txbuf + off, n);
 		if (wr <= 0) {
 			aboot_notify_log("smux: usb write fail");
+			s_tx_error = 1;
 			break;
 		}
 		off += (size_t)wr;
 		smux_drain_rx();
 	}
-	free(s_smux->txbuf);
+	/* static buffer — do not free */
 	s_smux->txbuf = NULL;
 	s_smux->txbuf_used = 0;
 }
@@ -136,11 +139,7 @@ static int alloc_txbuf(void)
 	if (!s_smux) {
 		return -1;
 	}
-	s_smux->txbuf = (uint8_t *)malloc(s_smux->txbuf_size);
-	if (!s_smux->txbuf) {
-		aboot_notify_log("smux: txbuf malloc fail");
-		return -1;
-	}
+	s_smux->txbuf = s_txbuf_mem;
 	s_smux->txbuf_used = 0;
 	return 0;
 }
@@ -151,6 +150,7 @@ static void smux_send_frame(const uint8_t *data, size_t size, smux_frame_type_t 
 	size_t used;
 
 	if (!smux || !data) {
+		s_tx_error = 1;
 		return;
 	}
 
@@ -158,8 +158,12 @@ static void smux_send_frame(const uint8_t *data, size_t size, smux_frame_type_t 
 	used = smux->txbuf_used;
 
 	while (size > 0) {
+		if (s_tx_error) {
+			return;
+		}
 		if (!smux->txbuf) {
 			if (alloc_txbuf() < 0) {
+				s_tx_error = 1;
 				return;
 			}
 			used = 0;
@@ -228,15 +232,19 @@ void aboot_smux_set_aboot_data_size(size_t size)
 	smux_set_tx_size(size);
 }
 
-void aboot_smux_write_aboot_data(const uint8_t *data, size_t len)
+int aboot_smux_write_aboot_data(const uint8_t *data, size_t len)
 {
+	s_tx_error = 0;
 	smux_send_frame(data, len, SMUX_FRAME_TYPE_ABOOT_DATA);
+	return s_tx_error ? -1 : 0;
 }
 
-void aboot_smux_write_aboot_cmd(const uint8_t *data, size_t len)
+int aboot_smux_write_aboot_cmd(const uint8_t *data, size_t len)
 {
+	s_tx_error = 0;
 	smux_set_tx_size(len);
 	smux_send_frame(data, len, SMUX_FRAME_TYPE_ABOOT_CMD);
+	return s_tx_error ? -1 : 0;
 }
 
 static void _reset_state(smux_t *smux)
@@ -497,10 +505,8 @@ void aboot_smux_exit(void)
 	if (!s_smux) {
 		return;
 	}
-	if (s_smux->txbuf) {
-		free(s_smux->txbuf);
-		s_smux->txbuf = NULL;
-	}
+	/* txbuf is static s_txbuf_mem */
+	s_smux->txbuf = NULL;
 	free(s_smux);
 	s_smux = NULL;
 	aboot_notify_log("smux: exit");

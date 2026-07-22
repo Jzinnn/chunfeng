@@ -195,7 +195,7 @@ void aboot_transport_exit(void)
 
 void aboot_transport_send_cmd(const uint8_t *cmd, size_t size)
 {
-	aboot_smux_write_aboot_cmd(cmd, size);
+	(void)aboot_smux_write_aboot_cmd(cmd, size);
 }
 
 void aboot_transport_set_data_size(size_t size)
@@ -203,7 +203,7 @@ void aboot_transport_set_data_size(size_t size)
 	aboot_smux_set_aboot_data_size(size);
 }
 
-void aboot_transport_send_data(const uint8_t *data, size_t size)
+int aboot_transport_send_data(const uint8_t *data, size_t size)
 {
-	aboot_smux_write_aboot_data(data, size);
+	return aboot_smux_write_aboot_data(data, size);
 }

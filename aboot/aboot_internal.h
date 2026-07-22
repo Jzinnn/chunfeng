@@ -27,7 +27,8 @@ int aboot_transport_init(void);
 void aboot_transport_exit(void);
 void aboot_transport_send_cmd(const uint8_t *cmd, size_t size);
 void aboot_transport_set_data_size(size_t size);
-void aboot_transport_send_data(const uint8_t *data, size_t size);
+/* return 0 ok, <0 on TX error */
+int aboot_transport_send_data(const uint8_t *data, size_t size);
 void aboot_transport_clear_response(void);
 int aboot_transport_wait_response(char *out, size_t out_sz, int timeout_ms);
 

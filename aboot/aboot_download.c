@@ -171,18 +171,45 @@ static int download_do_download_data(uint32_t size)
 	uint8_t buf[MAX_DOWNLOAD_BUF_SIZE];
 	size_t len;
 	uint32_t left = size;
+	uint32_t sent = 0;
+	uint32_t last_log = 0;
+	char msg[96];
+	int verbose = aboot_get_verbose();
 
 	aboot_transport_set_data_size(size);
+	/* -v printf during multi-100KB TX will stall USB — force mute here */
+	aboot_set_device_log_quiet(1);
+	snprintf(msg, sizeof(msg), "download: sending payload %u bytes...", (unsigned)size);
+	aboot_notify_log(msg);
 
 	while (left) {
 		len = left > MAX_DOWNLOAD_BUF_SIZE ? MAX_DOWNLOAD_BUF_SIZE : left;
 		if (fread(buf, 1, len, s_file) != len) {
+			aboot_notify_log("download: fread fail");
+			if (verbose) {
+				aboot_set_device_log_quiet(0);
+			}
 			return -1;
 		}
-		aboot_transport_send_data(buf, len);
+		if (aboot_transport_send_data(buf, len) < 0) {
+			aboot_notify_log("download: usb tx fail");
+			if (verbose) {
+				aboot_set_device_log_quiet(0);
+			}
+			return -1;
+		}
 		left -= (uint32_t)len;
-		/* keep RX path alive during long TX */
+		sent += (uint32_t)len;
 		aboot_smux_poll(0);
+		if (sent - last_log >= 64 * 1024 || left == 0) {
+			snprintf(msg, sizeof(msg), "download: payload %u / %u",
+				 (unsigned)sent, (unsigned)size);
+			aboot_notify_log(msg);
+			last_log = sent;
+		}
+	}
+	if (verbose) {
+		aboot_set_device_log_quiet(0);
 	}
 	return 0;
 }
