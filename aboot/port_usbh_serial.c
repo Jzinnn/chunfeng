@@ -38,7 +38,7 @@ static int port_open_one(const char *dev_path)
 	termios.parity = USBH_SERIAL_PARITY_NONE;
 	termios.stopbits = USBH_SERIAL_STOPBITS_1;
 	termios.rtscts = false;
-	termios.rx_timeout = 500;
+	termios.rx_timeout = 50;
 	usbh_serial_control(s_serial, USBH_SERIAL_CMD_SET_ATTR, &termios);
 
 	strncpy(s_opened_dev, dev_path, sizeof(s_opened_dev) - 1);
@@ -109,9 +109,24 @@ static int port_write(const uint8_t *buf, size_t len)
 
 static int port_read(uint8_t *buf, size_t len, int timeout_ms)
 {
+	int n;
+
 	if (!s_serial || !buf || !len) {
 		return -1;
 	}
+
+	/* timeout_ms==0: non-blocking drain (needed while TX) */
+	if (timeout_ms == 0) {
+		uint32_t flags = s_serial->open_flags;
+		s_serial->open_flags |= USBH_SERIAL_O_NONBLOCK;
+		n = usbh_serial_read(s_serial, buf, (uint32_t)len);
+		s_serial->open_flags = flags;
+		if (n < 0) {
+			return 0;
+		}
+		return n;
+	}
+
 	(void)timeout_ms;
 	return usbh_serial_read(s_serial, buf, (uint32_t)len);
 }

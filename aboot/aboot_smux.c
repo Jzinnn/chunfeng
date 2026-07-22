@@ -59,6 +59,8 @@ typedef struct {
 
 static smux_t *s_smux;
 
+static void smux_process_incoming_data(const uint8_t *data, size_t len);
+
 static void smux_delay_ms(int ms)
 {
 #ifdef CONFIG_RTTKERNEL
@@ -82,13 +84,47 @@ static void smux_set_tx_size(size_t size)
 	s_smux->txbuf_used = 0;
 }
 
+/* Drain host RX while TX runs — serial ringbuffer is only ~2KB. */
+static void smux_drain_rx(void)
+{
+	uint8_t buf[256];
+	int n;
+	int guard = 64;
+
+	if (!s_smux || !g_aboot_io) {
+		return;
+	}
+	while (guard-- > 0) {
+		n = g_aboot_io->read(buf, sizeof(buf), 0);
+		if (n <= 0) {
+			break;
+		}
+		smux_process_incoming_data(buf, (size_t)n);
+	}
+}
+
 static void send_txbuf(void)
 {
+	size_t off = 0;
+	const size_t chunk = 512;
+
 	if (!s_smux || !s_smux->txbuf || !g_aboot_io) {
 		return;
 	}
-	if (s_smux->txbuf_used > 0) {
-		g_aboot_io->write(s_smux->txbuf, s_smux->txbuf_used);
+	while (off < s_smux->txbuf_used) {
+		size_t n = s_smux->txbuf_used - off;
+		int wr;
+
+		if (n > chunk) {
+			n = chunk;
+		}
+		wr = g_aboot_io->write(s_smux->txbuf + off, n);
+		if (wr <= 0) {
+			aboot_notify_log("smux: usb write fail");
+			break;
+		}
+		off += (size_t)wr;
+		smux_drain_rx();
 	}
 	free(s_smux->txbuf);
 	s_smux->txbuf = NULL;
@@ -170,17 +206,18 @@ static void smux_send_frame(const uint8_t *data, size_t size, smux_frame_type_t 
 			}
 			*p++ = SMUX_FRAME_DELIMITER;
 			used++;
-			if (!size) {
-				if (smux->total_tx_size == 0) {
-					if (used % 512 == 0) {
-						*p++ = SMUX_FRAME_DELIMITER;
-						used++;
-					}
-					smux->txbuf_used = used;
-					send_txbuf();
-					used = 0;
-				}
+			/*
+			 * Melis USB host: flush every SMUX frame (PC aboot-tiny batches).
+			 * Large unflushed TX starves RX and overflows usbh_serial ringbuffer
+			 * → desync → "lost frame".
+			 */
+			if (!size && smux->total_tx_size == 0 && (used % 512 == 0)) {
+				*p++ = SMUX_FRAME_DELIMITER;
+				used++;
 			}
+			smux->txbuf_used = used;
+			send_txbuf();
+			used = 0;
 		}
 	}
 	smux->txbuf_used = used;
@@ -211,6 +248,8 @@ static void _reset_state(smux_t *smux)
 
 static void _handle_char(smux_t *smux, char c)
 {
+	size_t limit;
+
 	switch (smux->frametype) {
 	case SMUX_FRAME_TYPE_STDIO:
 	case SMUX_FRAME_TYPE_HELLO:
@@ -218,7 +257,11 @@ static void _handle_char(smux_t *smux, char c)
 	case SMUX_FRAME_TYPE_ABOOT_CMD:
 	case SMUX_FRAME_TYPE_ABOOT_DATA:
 	case SMUX_FRAME_TYPE_HEART_BEAT:
-		if (smux->framesize < smux->mtu) {
+		limit = smux->mtu;
+		if (limit == 0 || limit > sizeof(smux->rxbuf)) {
+			limit = sizeof(smux->rxbuf);
+		}
+		if (smux->framesize < limit) {
 			smux->rxbuf[smux->framesize++] = (uint8_t)c;
 		} else {
 			aboot_notify_log("smux: lost frame (mtu)");
@@ -250,10 +293,17 @@ static void _end_of_frame(smux_t *smux)
 	case SMUX_FRAME_TYPE_HELLO_REPLY:
 		if (smux->stage == STAGE_HELLO) {
 			if (smux->framesize == sizeof(smux->mtu)) {
+				char msg[64];
+
 				smux->mtu = ((uint16_t)smux->rxbuf[0] << 8) | smux->rxbuf[1];
+				if (smux->mtu == 0 || smux->mtu > ABOOT_SMUX_FRAME_MTU) {
+					smux->mtu = ABOOT_SMUX_FRAME_MTU;
+				}
 				smux->stage = STAGE_RUNNING;
 				aboot_notify_status("RUNNING", 0);
-				aboot_notify_log("smux: HELLO_REPLY ok, RUNNING");
+				snprintf(msg, sizeof(msg), "smux: HELLO_REPLY ok, RUNNING mtu=%u",
+					 (unsigned)smux->mtu);
+				aboot_notify_log(msg);
 			}
 		} else {
 			aboot_notify_log("smux: unexpected HELLO_REPLY");
