@@ -14,6 +14,13 @@ void aboot_notify_log(const char *msg);
 void aboot_notify_status(const char *status, int error);
 void aboot_notify_progress(int percent);
 
+/* Mute modem INFO/STDIO printf during download (msh printf is too slow → USB RX drop). */
+void aboot_device_log_drop(void); /* internal count bump */
+
+void aboot_set_device_log_quiet(int quiet);
+int aboot_device_log_is_quiet(void);
+unsigned aboot_device_log_take_dropped(void);
+
 /* layers */
 int aboot_preamble_start(void);
 int aboot_transport_init(void);

@@ -34,7 +34,9 @@ void aboot_transport_clear_response(void)
 int aboot_transport_wait_response(char *out, size_t out_sz, int timeout_ms)
 {
 	int elapsed = 0;
+	int last_hb = -3000;
 	const int slice = 20;
+	const int hb_ms = 2000;
 
 	if (!out || out_sz == 0) {
 		return -1;
@@ -50,6 +52,24 @@ int aboot_transport_wait_response(char *out, size_t out_sz, int timeout_ms)
 		aboot_smux_poll(slice);
 		dl_delay_ms(slice);
 		elapsed += slice;
+
+		/* long waits: alive tick (device INFO muted during download) */
+		if (timeout_ms >= 15000 && elapsed - last_hb >= hb_ms) {
+			char msg[120];
+			unsigned dropped = aboot_device_log_take_dropped();
+
+			if (dropped) {
+				snprintf(msg, sizeof(msg),
+					 "waiting reply... %ds / %ds (muted %u device logs)",
+					 elapsed / 1000, timeout_ms / 1000, dropped);
+			} else {
+				snprintf(msg, sizeof(msg),
+					 "waiting reply... %ds / %ds",
+					 elapsed / 1000, timeout_ms / 1000);
+			}
+			aboot_notify_log(msg);
+			last_hb = elapsed;
+		}
 	}
 	return -1;
 }
@@ -70,6 +90,10 @@ static void aboot_transport_rx_callback(const uint8_t *status, size_t size)
 	}
 
 	if (!memcmp(status, "INFO", 4)) {
+		if (aboot_device_log_is_quiet()) {
+			aboot_device_log_drop();
+			return;
+		}
 		memcpy(response, status + 4, size - 4);
 		response[size - 4] = '\0';
 		aboot_notify_log(response);

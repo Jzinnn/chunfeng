@@ -13,14 +13,14 @@ static void aboot_msh_cb(const aboot_message_t *msg, void *ctx)
 	}
 	switch (msg->event) {
 	case ABOOT_EVT_LOG:
-		printf("[aboot] %s\n", msg->u.message ? msg->u.message : "");
+		aboot_log_printf("%s\n", msg->u.message ? msg->u.message : "");
 		break;
 	case ABOOT_EVT_PROGRESS:
-		printf("[aboot] progress %d%%\n", msg->u.progress);
+		aboot_log_printf("progress %d%%\n", msg->u.progress);
 		break;
 	case ABOOT_EVT_STATUS:
-		printf("[aboot] status=%s err=%d\n",
-		       msg->u.status ? msg->u.status : "", msg->error);
+		aboot_log_printf("status=%s err=%d\n",
+				 msg->u.status ? msg->u.status : "", msg->error);
 		break;
 	default:
 		break;

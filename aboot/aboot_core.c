@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <rtthread.h>
 
 #include "aboot_internal.h"
@@ -7,6 +8,55 @@
 const aboot_io_t *g_aboot_io;
 aboot_callback_t g_aboot_cb;
 void *g_aboot_cb_ctx;
+
+static int s_device_log_quiet;
+static unsigned s_device_log_dropped;
+static rt_tick_t s_log_t0;
+
+void aboot_log_printf(const char *fmt, ...)
+{
+	va_list ap;
+	rt_tick_t elapsed_tick;
+	unsigned long ms;
+	unsigned long sec;
+	unsigned long msec;
+
+	elapsed_tick = rt_tick_get() - s_log_t0;
+	ms = (unsigned long)elapsed_tick * 1000UL / (unsigned long)RT_TICK_PER_SECOND;
+	sec = ms / 1000UL;
+	msec = ms % 1000UL;
+	printf("[aboot +%lu.%03lus] ", sec, msec);
+
+	va_start(ap, fmt);
+	vprintf(fmt, ap);
+	va_end(ap);
+}
+
+void aboot_set_device_log_quiet(int quiet)
+{
+	s_device_log_quiet = quiet ? 1 : 0;
+	if (!quiet) {
+		s_device_log_dropped = 0;
+	}
+}
+
+int aboot_device_log_is_quiet(void)
+{
+	return s_device_log_quiet;
+}
+
+void aboot_device_log_drop(void)
+{
+	s_device_log_dropped++;
+}
+
+unsigned aboot_device_log_take_dropped(void)
+{
+	unsigned n = s_device_log_dropped;
+
+	s_device_log_dropped = 0;
+	return n;
+}
 
 /* Expand \\r \\n \\t \\\\ in AT string; return length written (no NUL required). */
 static size_t aboot_unescape(const char *in, char *out, size_t out_sz)
@@ -57,7 +107,7 @@ void aboot_notify_log(const char *msg)
 	aboot_message_t m;
 
 	if (!g_aboot_cb || !msg) {
-		printf("[aboot] %s\n", msg ? msg : "");
+		aboot_log_printf("%s\n", msg ? msg : "");
 		return;
 	}
 	memset(&m, 0, sizeof(m));
@@ -71,7 +121,7 @@ void aboot_notify_status(const char *status, int error)
 	aboot_message_t m;
 
 	if (!g_aboot_cb) {
-		printf("[aboot] status=%s err=%d\n", status ? status : "", error);
+		aboot_log_printf("status=%s err=%d\n", status ? status : "", error);
 		return;
 	}
 	memset(&m, 0, sizeof(m));
@@ -86,7 +136,7 @@ void aboot_notify_progress(int percent)
 	aboot_message_t m;
 
 	if (!g_aboot_cb) {
-		printf("[aboot] progress=%d\n", percent);
+		aboot_log_printf("progress=%d\n", percent);
 		return;
 	}
 	memset(&m, 0, sizeof(m));
@@ -103,6 +153,7 @@ int aboot_core_init(const aboot_io_t *io, aboot_callback_t cb, void *cb_ctx)
 	g_aboot_io = io;
 	g_aboot_cb = cb;
 	g_aboot_cb_ctx = cb_ctx;
+	s_log_t0 = rt_tick_get();
 	aboot_notify_log("core init ok");
 	return 0;
 }

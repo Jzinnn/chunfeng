@@ -287,7 +287,11 @@ static void _end_of_frame(smux_t *smux)
 			}
 		}
 		smux->rxbuf[smux->framesize < ABOOT_SMUX_FRAME_MTU ? smux->framesize : ABOOT_SMUX_FRAME_MTU - 1] = '\0';
-		aboot_notify_log((const char *)smux->rxbuf);
+		if (aboot_device_log_is_quiet()) {
+			aboot_device_log_drop();
+		} else {
+			aboot_notify_log((const char *)smux->rxbuf);
+		}
 		break;
 
 	case SMUX_FRAME_TYPE_HELLO_REPLY:

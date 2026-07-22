@@ -220,6 +220,10 @@ static int download_send_and_wait(char *cmd_line, char *expect_template,
 	aboot_transport_clear_response();
 	snprintf(msg, sizeof(msg), "download: tx '%s'", cmd_line);
 	aboot_notify_log(msg);
+	if (!strcmp(cmd_line, "call")) {
+		aboot_notify_status("PREBOOT", 0);
+		aboot_notify_log("download: call/preboot (device INFO muted; watch PROG)");
+	}
 	aboot_transport_send_cmd((const uint8_t *)cmd_line, strlen(cmd_line));
 	if (download_wait_device(dev_resp, timeout_ms) < 0) {
 		aboot_notify_log("download: wait response timeout");
@@ -271,6 +275,9 @@ int aboot_download_file(const char *img_path, int reboot)
 		 img_path, (unsigned)s_firmware_size, reboot);
 	aboot_notify_log(msg);
 	aboot_notify_progress(0);
+	/* msh printf of modem INFO is far slower than Linux PC → mute during download */
+	aboot_set_device_log_quiet(1);
+	aboot_notify_log("download: device INFO muted (PROG/OKAY still shown)");
 
 	if (download_read_line(cmd_line) <= 0) {
 		goto fail;
@@ -346,6 +353,7 @@ int aboot_download_file(const char *img_path, int reboot)
 			rc = download_read_cmd_response(cmd_line, expect);
 		} else {
 			if (!s_reboot_after) {
+				aboot_set_device_log_quiet(0);
 				aboot_notify_progress(100);
 				aboot_notify_status("SUCCEEDED", 0);
 				fclose(s_file);
@@ -388,6 +396,7 @@ int aboot_download_file(const char *img_path, int reboot)
 					dl_delay_ms(100);
 					aboot_notify_progress(100);
 					aboot_notify_status("SUCCEEDED", 0);
+					aboot_set_device_log_quiet(0);
 					fclose(s_file);
 					s_file = NULL;
 					return 0;
@@ -405,6 +414,7 @@ int aboot_download_file(const char *img_path, int reboot)
 	}
 
 fail:
+	aboot_set_device_log_quiet(0);
 	aboot_notify_status("FAILED", -1);
 	if (s_file) {
 		fclose(s_file);
