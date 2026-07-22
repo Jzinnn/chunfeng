@@ -344,7 +344,10 @@ int aboot_download_file(const char *img_path, int reboot)
 			strncpy(expect_copy, expect, sizeof(expect_copy) - 1);
 			expect_copy[sizeof(expect_copy) - 1] = '\0';
 			if (download_handle_getvar(variable, expect_copy, dev_resp) < 0) {
-				aboot_notify_log("download: getvar mismatch");
+				snprintf(msg, sizeof(msg),
+					 "download: getvar mismatch var=%s expect='%s' got='%s'",
+					 variable, expect, dev_resp);
+				aboot_notify_log(msg);
 				goto fail;
 			}
 		} else if (strlen(cmd_line) > strlen(cmd_download) &&

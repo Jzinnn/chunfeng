@@ -11,7 +11,6 @@
 
 static char s_resp_buf[ABOOT_RESPONSE_SZ];
 static volatile int s_resp_ready;
-static volatile int s_prog_seen;
 
 static void dl_delay_ms(int ms)
 {
@@ -30,7 +29,6 @@ void aboot_transport_clear_response(void)
 {
 	s_resp_ready = 0;
 	s_resp_buf[0] = '\0';
-	s_prog_seen = 0;
 }
 
 int aboot_transport_wait_response(char *out, size_t out_sz, int timeout_ms)
@@ -60,8 +58,8 @@ int aboot_transport_wait_response(char *out, size_t out_sz, int timeout_ms)
 			if (elapsed_ms >= timeout_ms) {
 				break;
 			}
-			/* heartbeat only for long waits (call), every 5s wall time */
-			if (timeout_ms >= 60000 && (now - last_hb) >= hb_ticks) {
+			/* heartbeat only for call-length waits (>=120s) */
+			if (timeout_ms >= 120000 && (now - last_hb) >= hb_ticks) {
 				char msg[120];
 				unsigned dropped = aboot_device_log_take_dropped();
 
@@ -71,7 +69,7 @@ int aboot_transport_wait_response(char *out, size_t out_sz, int timeout_ms)
 						 elapsed_ms / 1000, timeout_ms / 1000, dropped);
 				} else {
 					snprintf(msg, sizeof(msg),
-						 "waiting reply... %ds / %ds (no usb data)",
+						 "waiting reply... %ds / %ds",
 						 elapsed_ms / 1000, timeout_ms / 1000);
 				}
 				aboot_notify_log(msg);
@@ -82,6 +80,7 @@ int aboot_transport_wait_response(char *out, size_t out_sz, int timeout_ms)
 		if (elapsed >= timeout_ms) {
 			break;
 		}
+		(void)last_hb;
 #endif
 
 		if (s_resp_ready) {
@@ -107,18 +106,6 @@ int aboot_transport_wait_response(char *out, size_t out_sz, int timeout_ms)
 			}
 		}
 
-		/*
-		 * During call, device may enter flasher and emit PROG before we
-		 * observed OKAY (OKAY lost in burst). Treat PROG as unstick.
-		 */
-		if (s_prog_seen && timeout_ms >= 60000) {
-			strncpy(out, "OKAY", out_sz - 1);
-			out[out_sz - 1] = '\0';
-			s_prog_seen = 0;
-			aboot_notify_log("transport: got PROG while waiting, treat as OKAY");
-			return 0;
-		}
-
 		if (!got) {
 			dl_delay_ms(5);
 #ifndef CONFIG_RTTKERNEL
@@ -129,7 +116,6 @@ int aboot_transport_wait_response(char *out, size_t out_sz, int timeout_ms)
 		else {
 			elapsed += 1;
 		}
-		(void)last_hb;
 #endif
 	}
 	return -1;
@@ -161,7 +147,6 @@ static void aboot_transport_rx_callback(const uint8_t *status, size_t size)
 	} else if (!memcmp(status, "PROG", 4)) {
 		memcpy(response, status + 4, size - 4);
 		response[size - 4] = '\0';
-		s_prog_seen = 1;
 		aboot_notify_progress(atoi(response));
 	} else if (!memcmp(status, "DATA", 4) || !memcmp(status, "OKAY", 4) ||
 		   !memcmp(status, "FAIL", 4)) {
