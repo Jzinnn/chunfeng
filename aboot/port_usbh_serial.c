@@ -5,7 +5,7 @@
 
 #include "aboot_core.h"
 
-#if defined(CONFIG_CHERRYUSB_HOST_GSM) || defined(CONFIG_CHERRYUSB_HOST_CDC_ACM)
+#if defined(CONFIG_CHERRYUSB_HOST_CDC_ACM) || defined(CONFIG_CHERRYUSB_HOST_GSM)
 #include "usbh_serial.h"
 #define ABOOT_HAVE_USBH_SERIAL 1
 #endif
@@ -47,95 +47,46 @@ static int port_open_one(const char *dev_path)
 	return 0;
 }
 
-/* Parse ".../ttyUSB3" or ".../ttyACM1" → kind + index; return 0 if matched */
-static int parse_tty_name(const char *path, int *is_usb, int *idx)
-{
-	const char *p;
-
-	if (!path) {
-		return -1;
-	}
-	p = strstr(path, "ttyUSB");
-	if (p) {
-		*is_usb = 1;
-		*idx = atoi(p + 6);
-		return 0;
-	}
-	p = strstr(path, "ttyACM");
-	if (p) {
-		*is_usb = 0;
-		*idx = atoi(p + 6);
-		return 0;
-	}
-	return -1;
-}
-
-static int port_try_pair(int prefer_usb, int idx)
+static int port_open_auto(void)
 {
 	char path[64];
-	int order_usb[2];
-	int i;
+	int idx;
 
-	/* prefer requested family first, then the other */
-	order_usb[0] = prefer_usb ? 1 : 0;
-	order_usb[1] = prefer_usb ? 0 : 1;
-
-	for (i = 0; i < 2; i++) {
-		if (order_usb[i]) {
-			snprintf(path, sizeof(path), "/dev/ttyUSB%d", idx);
-		} else {
-			snprintf(path, sizeof(path), "/dev/ttyACM%d", idx);
-		}
+	for (idx = 0; idx < ABOOT_SERIAL_PROBE_MAX; idx++) {
+		snprintf(path, sizeof(path), "/dev/ttyACM%d", idx);
 		printf("[aboot-port] try %s\n", path);
 		if (port_open_one(path) == 0) {
 			return 0;
 		}
 	}
-	return -1;
-}
-
-static int port_open_auto(void)
-{
-	int idx;
-
-	/* each index: prefer ttyUSB, then ttyACM */
-	for (idx = 0; idx < ABOOT_SERIAL_PROBE_MAX; idx++) {
-		if (port_try_pair(1, idx) == 0) {
-			return 0;
-		}
-	}
-	printf("[aboot-port] auto: no ttyUSB*/ttyACM* opened\n");
+	printf("[aboot-port] auto: no ttyACM* opened\n");
 	return -1;
 }
 
 static int port_open(const char *dev_path)
 {
-	int is_usb = 1;
-	int idx = 0;
-
 	if (s_serial) {
 		usbh_serial_close(s_serial);
 		s_serial = NULL;
 	}
 	s_opened_dev[0] = '\0';
 
-	/* auto / empty / "default" → probe both families */
 	if (!dev_path || !dev_path[0] ||
 	    !strcmp(dev_path, "auto") || !strcmp(dev_path, "default")) {
 		return port_open_auto();
 	}
 
-	/* explicit path: try it, then sibling ttyUSB↔ttyACM with same index */
+	/* only accept ttyACM* paths (or auto above) */
+	if (!strstr(dev_path, "ttyACM")) {
+		printf("[aboot-port] only ttyACM supported, got %s — try auto\n",
+		       dev_path);
+		return port_open_auto();
+	}
+
 	if (port_open_one(dev_path) == 0) {
 		return 0;
 	}
-	printf("[aboot-port] open %s fail, try alternate name\n", dev_path);
-
-	if (parse_tty_name(dev_path, &is_usb, &idx) == 0) {
-		return port_try_pair(is_usb, idx);
-	}
-
-	/* unknown name: fall back to auto probe */
+	printf("[aboot-port] open %s fail\n", dev_path);
 	return port_open_auto();
 }
 
@@ -150,34 +101,28 @@ static void port_close(void)
 
 static int port_write(const uint8_t *buf, size_t len)
 {
-	int ret;
-
 	if (!s_serial || !buf || !len) {
 		return -1;
 	}
-	ret = usbh_serial_write(s_serial, buf, (uint32_t)len);
-	return ret;
+	return usbh_serial_write(s_serial, buf, (uint32_t)len);
 }
 
 static int port_read(uint8_t *buf, size_t len, int timeout_ms)
 {
-	int ret;
-
 	if (!s_serial || !buf || !len) {
 		return -1;
 	}
 	(void)timeout_ms;
-	ret = usbh_serial_read(s_serial, buf, (uint32_t)len);
-	return ret;
+	return usbh_serial_read(s_serial, buf, (uint32_t)len);
 }
 
-#else /* no USB host serial in this build */
+#else /* no USB host serial */
 
 static int port_open(const char *dev_path)
 {
 	printf("[aboot-port] USBH serial not enabled, cannot open %s\n",
 	       dev_path ? dev_path : "");
-	printf("[aboot-port] enable CONFIG_CHERRYUSB_HOST_GSM and/or CDC_ACM\n");
+	printf("[aboot-port] enable CONFIG_CHERRYUSB_HOST_CDC_ACM\n");
 	return -1;
 }
 

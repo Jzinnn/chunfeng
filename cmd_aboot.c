@@ -32,14 +32,15 @@ static void usage(void)
 	printf("  aboot <image> [dev]     connect + download ASR aboot image\n");
 	printf("  aboot connect [dev]     open + SMUX handshake only\n");
 	printf("  aboot help\n");
-	printf("Default dev: /dev/ttyUSB0\n");
+	printf("dev: /dev/ttyACM0 | auto (default, probes ttyACM0..3)\n");
 	printf("Example:\n");
-	printf("  aboot /mnt/D/fw.bin /dev/ttyUSB0\n");
+	printf("  aboot /mnt/D/fw.bin auto\n");
+	printf("  aboot connect /dev/ttyACM0\n");
 }
 
 static int cmd_aboot(int argc, char **argv)
 {
-	const char *dev = "/dev/ttyUSB0";
+	const char *dev = "auto";
 	const char *img = NULL;
 	int ret;
 
