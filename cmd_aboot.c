@@ -3,31 +3,27 @@
 #include <stdlib.h>
 #include <hal_cmd.h>
 
-#include "aboot_core.h"
+#include "aboot_api.h"
 
-static void aboot_msh_cb(const aboot_message_t *msg, void *ctx)
+static void aboot_msh_on_log(const char *message, void *ctx)
 {
 	(void)ctx;
-	if (!msg) {
-		return;
-	}
-	switch (msg->event) {
-	case ABOOT_EVT_LOG:
-		aboot_log_printf("%s\n", msg->u.message ? msg->u.message : "");
-		break;
-	case ABOOT_EVT_PROGRESS:
-		aboot_log_printf("%s progress %d%%\n",
-				 msg->u.progress.src == ABOOT_PROG_DEVICE ?
-					 "device" : "script",
-				 msg->u.progress.percent);
-		break;
-	case ABOOT_EVT_STATUS:
-		aboot_log_printf("status=%s err=%d\n",
-				 msg->u.status ? msg->u.status : "", msg->error);
-		break;
-	default:
-		break;
-	}
+	aboot_log_printf("%s\n", message ? message : "");
+}
+
+static void aboot_msh_on_progress(aboot_progress_src_t src, int percent,
+				  void *ctx)
+{
+	(void)ctx;
+	aboot_log_printf("%s progress %d%%\n",
+			 src == ABOOT_PROG_DEVICE ? "device" : "script",
+			 percent);
+}
+
+static void aboot_msh_on_status(const char *status, int error, void *ctx)
+{
+	(void)ctx;
+	aboot_log_printf("status=%s err=%d\n", status ? status : "", error);
 }
 
 static void usage(void)
@@ -53,6 +49,12 @@ static int cmd_aboot(int argc, char **argv)
 	int ret;
 	int i;
 	int verbose = 0;
+	aboot_cbs_t cbs = {
+		.on_status = aboot_msh_on_status,
+		.on_progress = aboot_msh_on_progress,
+		.on_log = aboot_msh_on_log,
+		.ctx = NULL,
+	};
 
 	if (argc < 2 || !strcmp(argv[1], "help") || !strcmp(argv[1], "-h")) {
 		usage();
@@ -64,10 +66,9 @@ static int cmd_aboot(int argc, char **argv)
 			verbose = 1;
 		}
 	}
-	aboot_set_verbose(verbose);
 
-	if (aboot_core_init(aboot_port_usbh_serial(), aboot_msh_cb, NULL) < 0) {
-		printf("aboot_core_init fail\n");
+	if (aboot_api_init(NULL, &cbs) < 0) {
+		printf("aboot_api_init fail\n");
 		return -1;
 	}
 
@@ -75,9 +76,8 @@ static int cmd_aboot(int argc, char **argv)
 		if (argc >= 3 && argv[2][0] != '-') {
 			dev = argv[2];
 		}
-		ret = aboot_core_connect(dev);
-		aboot_core_disconnect();
-		aboot_core_deinit();
+		ret = aboot_api_connect(dev);
+		aboot_api_deinit();
 		return ret;
 	}
 
@@ -87,7 +87,7 @@ static int cmd_aboot(int argc, char **argv)
 
 		if (argc < 4) {
 			printf("usage: aboot at <dev> <cmd> [timeout_ms]\n");
-			aboot_core_deinit();
+			aboot_api_deinit();
 			return -1;
 		}
 		dev = argv[2];
@@ -95,8 +95,8 @@ static int cmd_aboot(int argc, char **argv)
 		if (argc >= 5 && argv[4][0] != '-') {
 			timeout_ms = atoi(argv[4]);
 		}
-		ret = aboot_core_at(dev, at_cmd, timeout_ms);
-		aboot_core_deinit();
+		ret = aboot_api_at(dev, at_cmd, timeout_ms);
+		aboot_api_deinit();
 		return ret;
 	}
 
@@ -106,15 +106,8 @@ static int cmd_aboot(int argc, char **argv)
 		dev = argv[2];
 	}
 
-	ret = aboot_core_connect(dev);
-	if (ret < 0) {
-		aboot_core_deinit();
-		return ret;
-	}
-
-	ret = aboot_core_download_file(img, 1);
-	aboot_core_disconnect();
-	aboot_core_deinit();
+	ret = aboot_api_download(img, dev, verbose);
+	aboot_api_deinit();
 	return ret;
 }
 FINSH_FUNCTION_EXPORT_ALIAS(cmd_aboot, __cmd_aboot, aboot download to modem);

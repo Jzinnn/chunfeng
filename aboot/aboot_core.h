@@ -45,7 +45,21 @@ typedef struct {
 	} u;
 } aboot_message_t;
 
+/* Unified event callback (LOG / PROGRESS / STATUS) */
 typedef void (*aboot_callback_t)(const aboot_message_t *msg, void *ctx);
+
+/* Dedicated callbacks — prefer these when UI only needs status/progress */
+typedef void (*aboot_status_cb_t)(const char *status, int error, void *ctx);
+typedef void (*aboot_progress_cb_t)(aboot_progress_src_t src, int percent,
+				    void *ctx);
+typedef void (*aboot_log_cb_t)(const char *message, void *ctx);
+
+typedef struct aboot_cbs {
+	aboot_status_cb_t on_status;
+	aboot_progress_cb_t on_progress;
+	aboot_log_cb_t on_log;
+	void *ctx;
+} aboot_cbs_t;
 
 /* Platform provides this */
 const aboot_io_t *aboot_port_usbh_serial(void);
@@ -58,7 +72,16 @@ void aboot_set_verbose(int on);
 int aboot_get_verbose(void);
 
 int aboot_core_init(const aboot_io_t *io, aboot_callback_t cb, void *cb_ctx);
+/* Same as init, plus dedicated status/progress/log callbacks (any may be NULL) */
+int aboot_core_init_ex(const aboot_io_t *io, aboot_callback_t cb, void *cb_ctx,
+		       const aboot_cbs_t *cbs);
 void aboot_core_deinit(void);
+
+/* Register / replace dedicated callbacks after init (NULL clears) */
+void aboot_set_status_callback(aboot_status_cb_t cb, void *ctx);
+void aboot_set_progress_callback(aboot_progress_cb_t cb, void *ctx);
+void aboot_set_log_callback(aboot_log_cb_t cb, void *ctx);
+void aboot_set_callbacks(const aboot_cbs_t *cbs);
 
 /* open path, send UABT preamble, enter SMUX (stub until ported) */
 int aboot_core_connect(const char *dev_path);

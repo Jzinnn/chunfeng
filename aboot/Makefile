@@ -1,4 +1,5 @@
 obj-y += aboot_core.o
+obj-y += aboot_api.o
 obj-y += aboot_preamble.o
 obj-y += aboot_smux.o
 obj-y += aboot_transport.o

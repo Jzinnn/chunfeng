@@ -9,6 +9,13 @@ const aboot_io_t *g_aboot_io;
 aboot_callback_t g_aboot_cb;
 void *g_aboot_cb_ctx;
 
+static aboot_status_cb_t s_status_cb;
+static void *s_status_ctx;
+static aboot_progress_cb_t s_progress_cb;
+static void *s_progress_ctx;
+static aboot_log_cb_t s_log_cb;
+static void *s_log_ctx;
+
 static int s_device_log_quiet;
 static unsigned s_device_log_dropped;
 static rt_tick_t s_log_t0;
@@ -116,35 +123,50 @@ static int aboot_at_done(const char *acc)
 void aboot_notify_log(const char *msg)
 {
 	aboot_message_t m;
+	int handled = 0;
 
-	if (!g_aboot_cb || !msg) {
-		aboot_log_printf("%s\n", msg ? msg : "");
-		return;
+	if (s_log_cb && msg) {
+		s_log_cb(msg, s_log_ctx);
+		handled = 1;
 	}
-	memset(&m, 0, sizeof(m));
-	m.event = ABOOT_EVT_LOG;
-	m.u.message = msg;
-	g_aboot_cb(&m, g_aboot_cb_ctx);
+	if (g_aboot_cb && msg) {
+		memset(&m, 0, sizeof(m));
+		m.event = ABOOT_EVT_LOG;
+		m.u.message = msg;
+		g_aboot_cb(&m, g_aboot_cb_ctx);
+		handled = 1;
+	}
+	if (!handled) {
+		aboot_log_printf("%s\n", msg ? msg : "");
+	}
 }
 
 void aboot_notify_status(const char *status, int error)
 {
 	aboot_message_t m;
+	int handled = 0;
 
-	if (!g_aboot_cb) {
-		aboot_log_printf("status=%s err=%d\n", status ? status : "", error);
-		return;
+	if (s_status_cb) {
+		s_status_cb(status, error, s_status_ctx);
+		handled = 1;
 	}
-	memset(&m, 0, sizeof(m));
-	m.event = ABOOT_EVT_STATUS;
-	m.error = error;
-	m.u.status = status;
-	g_aboot_cb(&m, g_aboot_cb_ctx);
+	if (g_aboot_cb) {
+		memset(&m, 0, sizeof(m));
+		m.event = ABOOT_EVT_STATUS;
+		m.error = error;
+		m.u.status = status;
+		g_aboot_cb(&m, g_aboot_cb_ctx);
+		handled = 1;
+	}
+	if (!handled) {
+		aboot_log_printf("status=%s err=%d\n", status ? status : "", error);
+	}
 }
 
 void aboot_notify_progress(aboot_progress_src_t src, int percent)
 {
 	aboot_message_t m;
+	int handled = 0;
 
 	if (percent < 0) {
 		percent = 0;
@@ -153,20 +175,69 @@ void aboot_notify_progress(aboot_progress_src_t src, int percent)
 		percent = 100;
 	}
 
-	if (!g_aboot_cb) {
+	if (s_progress_cb) {
+		s_progress_cb(src, percent, s_progress_ctx);
+		handled = 1;
+	}
+	if (g_aboot_cb) {
+		memset(&m, 0, sizeof(m));
+		m.event = ABOOT_EVT_PROGRESS;
+		m.u.progress.percent = percent;
+		m.u.progress.src = src;
+		g_aboot_cb(&m, g_aboot_cb_ctx);
+		handled = 1;
+	}
+	if (!handled) {
 		aboot_log_printf("%s progress %d%%\n",
 				 src == ABOOT_PROG_DEVICE ? "device" : "script",
 				 percent);
+	}
+}
+
+void aboot_set_status_callback(aboot_status_cb_t cb, void *ctx)
+{
+	s_status_cb = cb;
+	s_status_ctx = ctx;
+}
+
+void aboot_set_progress_callback(aboot_progress_cb_t cb, void *ctx)
+{
+	s_progress_cb = cb;
+	s_progress_ctx = ctx;
+}
+
+void aboot_set_log_callback(aboot_log_cb_t cb, void *ctx)
+{
+	s_log_cb = cb;
+	s_log_ctx = ctx;
+}
+
+void aboot_set_callbacks(const aboot_cbs_t *cbs)
+{
+	if (!cbs) {
+		s_status_cb = NULL;
+		s_status_ctx = NULL;
+		s_progress_cb = NULL;
+		s_progress_ctx = NULL;
+		s_log_cb = NULL;
+		s_log_ctx = NULL;
 		return;
 	}
-	memset(&m, 0, sizeof(m));
-	m.event = ABOOT_EVT_PROGRESS;
-	m.u.progress.percent = percent;
-	m.u.progress.src = src;
-	g_aboot_cb(&m, g_aboot_cb_ctx);
+	s_status_cb = cbs->on_status;
+	s_status_ctx = cbs->ctx;
+	s_progress_cb = cbs->on_progress;
+	s_progress_ctx = cbs->ctx;
+	s_log_cb = cbs->on_log;
+	s_log_ctx = cbs->ctx;
 }
 
 int aboot_core_init(const aboot_io_t *io, aboot_callback_t cb, void *cb_ctx)
+{
+	return aboot_core_init_ex(io, cb, cb_ctx, NULL);
+}
+
+int aboot_core_init_ex(const aboot_io_t *io, aboot_callback_t cb, void *cb_ctx,
+		       const aboot_cbs_t *cbs)
 {
 	if (!io || !io->open || !io->close || !io->write || !io->read) {
 		return -1;
@@ -174,6 +245,7 @@ int aboot_core_init(const aboot_io_t *io, aboot_callback_t cb, void *cb_ctx)
 	g_aboot_io = io;
 	g_aboot_cb = cb;
 	g_aboot_cb_ctx = cb_ctx;
+	aboot_set_callbacks(cbs);
 	s_log_t0 = rt_tick_get();
 	aboot_notify_log("core init ok");
 	return 0;
@@ -185,6 +257,7 @@ void aboot_core_deinit(void)
 	g_aboot_io = NULL;
 	g_aboot_cb = NULL;
 	g_aboot_cb_ctx = NULL;
+	aboot_set_callbacks(NULL);
 }
 
 int aboot_core_connect(const char *dev_path)
@@ -226,6 +299,7 @@ int aboot_core_connect(const char *dev_path)
 	}
 
 	aboot_notify_log("connect ok (smux RUNNING)");
+	aboot_notify_status("CONNECTED", 0);
 	return 0;
 }
 
